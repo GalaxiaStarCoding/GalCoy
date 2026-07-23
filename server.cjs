@@ -237,7 +237,7 @@ function connectToTeamTalk({ domain, tcp_port, udp_port, username, password, cha
       if (result.connected && result.joined) {
         phase = "post_join";
         tcpSocket.setTimeout(0);
-        send(`changestatus statusmode=0 statusmsg="${escapeTT('Type "h" for further information')}"`);
+        send(`changestatus statusmode=0 statusmsg="${escapeTT('Type "h" For Help 📝')}"`);
       } else {
         closeConnection(session);
       }
@@ -272,24 +272,53 @@ function connectToTeamTalk({ domain, tcp_port, udp_port, username, password, cha
       }
     };
 
+    const updatePlayingStatus = (stationName, songName, streamUrl) => {
+      const station = stationName || "Stream";
+      const song = songName || "Unknown";
+      session.botStatus = { status: 'playing', stationName: station, songName: song, streamUrl };
+      setStatus(`Now Playing On ${station}: ${song}`);
+    };
+
+    const startMetadataPolling = (streamUrl) => {
+      if (session.metadataTimer) clearInterval(session.metadataTimer);
+      session.metadataTimer = setInterval(async () => {
+        try {
+          const meta = await fetchStreamMetadata(streamUrl);
+          if (!meta) return;
+          const newSong = meta.songName || "Unknown";
+          if (newSong !== session.botStatus.songName) {
+            updatePlayingStatus(meta.stationName, newSong, streamUrl);
+          }
+        } catch {}
+      }, 15000);
+    };
+
     const handleStreamCommand = async (fromUserId, streamUrl) => {
       try {
-        sendPM(fromUserId, "Now Loading, Please wait...");
+        if (session.metadataTimer) { clearInterval(session.metadataTimer); session.metadataTimer = null; }
+        if (fromUserId) sendPM(fromUserId, "Now Loading, Please wait...");
         session.botStatus = { status: 'loading', stationName: '', songName: '', streamUrl };
         setStatus("Loading stream...");
 
         const metadata = await fetchStreamMetadata(streamUrl);
         await new Promise((r) => setTimeout(r, 5000));
         if (metadata && (metadata.stationName || metadata.songName)) {
-          session.botStatus = { status: 'playing', stationName: metadata.stationName || "Stream", songName: metadata.songName || "Unknown", streamUrl };
-          setStatus(`Now Playing On ${metadata.stationName || "Stream"}: ${metadata.songName || "Unknown"}`);
+          updatePlayingStatus(metadata.stationName, metadata.songName, streamUrl);
         } else {
-          session.botStatus = { status: 'playing', stationName: "Stream", songName: "Unknown", streamUrl };
-          setStatus("Now Playing: Unknown Stream");
+          updatePlayingStatus("Stream", "Unknown", streamUrl);
         }
+        startMetadataPolling(streamUrl);
       } catch (e) {
-        sendPM(fromUserId, "Error loading stream: " + (e.message || "unknown error"));
+        if (fromUserId) sendPM(fromUserId, "Error loading stream: " + (e.message || "unknown error"));
       }
+    };
+
+    // Allow HTTP endpoint to trigger stream playback
+    session.startStream = (streamUrl) => handleStreamCommand(null, streamUrl);
+    session.stopStream = () => {
+      if (session.metadataTimer) { clearInterval(session.metadataTimer); session.metadataTimer = null; }
+      session.botStatus = { status: 'idle', stationName: '', songName: '' };
+      try { send(`changestatus statusmode=0 statusmsg="${escapeTT('Type "h" For Help 📝')}"`); } catch {}
     };
 
     const proceedAfterData = () => {
@@ -521,14 +550,44 @@ const server = http.createServer(async (req, res) => {
     const session = connections.get(data.sessionId);
     if (session && session.tcpSocket) {
       try {
-        const msg = data.statusMsg || "Unmuted - Ready to Stream";
+        // Preserve current "Now Playing" status instead of overwriting
+        let msg = data.statusMsg;
+        if (!msg && session.botStatus && session.botStatus.status === 'playing') {
+          const station = session.botStatus.stationName || "Stream";
+          const song = session.botStatus.songName || "Unknown";
+          msg = `Now Playing On ${station}: ${song}`;
+        }
+        if (!msg) msg = "Unmuted - Ready to Stream";
         session.tcpSocket.write(`changestatus statusmode=0 statusmsg="${escapeTT(msg)}"\r\n`);
+        session.unmuted = true;
         sendJson(res, 200, { unmuted: true });
       } catch (e) {
         sendJson(res, 200, { unmuted: false, error: e.message });
       }
     } else {
       sendJson(res, 200, { unmuted: false, error: "No active session" });
+    }
+    return;
+  }
+
+  if (route === "startStream") {
+    const session = connections.get(data.sessionId);
+    if (session && session.startStream && data.streamUrl) {
+      session.startStream(data.streamUrl);
+      sendJson(res, 200, { started: true });
+    } else {
+      sendJson(res, 200, { started: false, error: "No active session or stream URL" });
+    }
+    return;
+  }
+
+  if (route === "stopStream") {
+    const session = connections.get(data.sessionId);
+    if (session && session.stopStream) {
+      session.stopStream();
+      sendJson(res, 200, { stopped: true });
+    } else {
+      sendJson(res, 200, { stopped: false, error: "No active session" });
     }
     return;
   }
