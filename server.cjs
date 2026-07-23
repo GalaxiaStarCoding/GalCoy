@@ -367,7 +367,7 @@ function connectToTeamTalk({ domain, tcp_port, udp_port, username, password, cha
         if (phase === "banner" && packet.startsWith("teamtalk")) {
           phase = "awaiting_login";
           const nickname = bot_name ? escapeTT(bot_name) : "GalCoy";
-          send(`login nickname="${nickname}" username="${escapeTT(username)}" password="${escapeTT(password)}"`);
+          send(`login nickname="${nickname}" username="${escapeTT(username)}" password="${escapeTT(password)}" clientname="Galcoy"`);
           continue;
         }
 
