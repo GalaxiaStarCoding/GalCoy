@@ -1,0 +1,60 @@
+{
+  "name": "BotServer",
+  "type": "object",
+  "properties": {
+    "bot_name": {
+      "type": "string",
+      "title": "Bot Name"
+    },
+    "domain": {
+      "type": "string",
+      "title": "Domain Name"
+    },
+    "tcp_port": {
+      "type": "number",
+      "title": "TCP Port",
+      "default": 10333
+    },
+    "udp_port": {
+      "type": "number",
+      "title": "UDP Port",
+      "default": 10333
+    },
+    "username": {
+      "type": "string",
+      "title": "Username"
+    },
+    "password": {
+      "type": "string",
+      "title": "Password"
+    },
+    "channel_path": {
+      "type": "string",
+      "title": "Channel Path",
+      "default": "/"
+    }
+  },
+  "required": [
+    "bot_name",
+    "domain",
+    "tcp_port",
+    "udp_port",
+    "username",
+    "password",
+    "channel_path"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
